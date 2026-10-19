@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>MysqlDumpBuilder.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 기본 옵션 스키마는 DLL 안에 내장한다. 앱 폴더에 같은 이름의 파일이 있으면 그것이 우선한다. -->
+    <EmbeddedResource Include="Resources\options.schema.json" LogicalName="options.schema.json" />
+  </ItemGroup>
+
+</Project>
