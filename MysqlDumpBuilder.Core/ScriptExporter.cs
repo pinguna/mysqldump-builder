@@ -47,6 +47,10 @@ public sealed class ScriptExporter
     {
         public bool HasExport => Request.Job != JobKind.ImportOnly;
         public bool HasImport => Request.Job != JobKind.ExportOnly;
+
+        /// <summary>Import 시작 메시지에 찍을 파일: 보통은 OUT_FILE 변수, Export + Import 에 읽을 파일을 따로 적었으면 그 경로.</summary>
+        public string ImportFile(string variable)
+            => ImportCommandBuilder.ReadsOtherFile(Request) ? ImportCommandBuilder.InputFileName(Request) : variable;
     }
 
     public static string ExtensionFor(ShellKind shell) => shell switch { ShellKind.Bash => ".sh", ShellKind.Cmd => ".bat", _ => ".ps1" };
@@ -182,7 +186,7 @@ public sealed class ScriptExporter
             var req = jobs[i].Request;
             var suffix = jobs.Count == 1 ? "" : $" {i + 1}/{jobs.Count}";
             if (req.Job != JobKind.ImportOnly) lines.Add("Source DB" + suffix + ": " + Source(req));
-            if (req.Job == JobKind.ImportOnly) lines.Add("Input file" + suffix + ": " + req.Import.InputFile.Trim());
+            if (req.Job == JobKind.ImportOnly || ImportCommandBuilder.ReadsOtherFile(req)) lines.Add("Input file" + suffix + ": " + req.Import.InputFile.Trim());
             if (req.Job != JobKind.ExportOnly) lines.Add("Target DB" + suffix + ": " + ImportCommandBuilder.Describe(req));
         }
         return lines;
@@ -231,7 +235,7 @@ public sealed class ScriptExporter
             {
                 var target = ImportCommandBuilder.Describe(item.Request);
                 sb.Append("START=$(date +%s)\n");
-                sb.Append("echo \"[$(date \"+%F %T\")] Import started: $OUT_FILE -> ").Append(target).Append("\"\n");
+                sb.Append("echo \"[$(date \"+%F %T\")] Import started: ").Append(item.ImportFile("$OUT_FILE")).Append(" -> ").Append(target).Append("\"\n");
                 foreach (var cmd in ImportCommands(item)) sb.Append(cmd).Append('\n');
                 sb.Append("echo \"[$(date \"+%F %T\")] Import done: ").Append(target).Append(" ($(( $(date +%s) - START ))s)\"\n");
             }
@@ -274,7 +278,7 @@ public sealed class ScriptExporter
             if (item.HasImport)
             {
                 var target = ImportCommandBuilder.Describe(item.Request);
-                sb.Append("echo [%date% %time%] Import started: %OUT_FILE% -^> ").Append(target).Append("\r\n");
+                sb.Append("echo [%date% %time%] Import started: ").Append(item.ImportFile("%OUT_FILE%")).Append(" -^> ").Append(target).Append("\r\n");
                 foreach (var cmd in ImportCommands(item))
                 {
                     sb.Append(Escape(cmd)).Append("\r\n");
@@ -321,7 +325,7 @@ public sealed class ScriptExporter
             {
                 var target = ImportCommandBuilder.Describe(item.Request);
                 sb.Append("$start = Get-Date\r\n");
-                sb.Append("Write-Host \"[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Import started: $OutFile -> ").Append(target).Append("\"\r\n");
+                sb.Append("Write-Host \"[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Import started: ").Append(item.ImportFile("$OutFile")).Append(" -> ").Append(target).Append("\"\r\n");
                 foreach (var cmd in ImportCommands(item))
                 {
                     sb.Append(cmd.Replace("\n", "\r\n")).Append("\r\n");

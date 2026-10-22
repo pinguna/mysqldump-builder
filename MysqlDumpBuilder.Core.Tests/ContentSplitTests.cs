@@ -129,4 +129,16 @@ public class ContentSplitTests
     [Fact]
     public void 미리보기_파일명은_두_개를_보여준다()
         => Assert.Equal("shop_20261006_1430_ddl.sql, shop_20261006_1430_data.sql", JobBuilder.FilePreview(NewRequest()));
+
+    [Fact]
+    public void 파일_분리에서는_읽을_파일을_무시하고_각자_만든_파일을_읽는다()
+    {
+        var req = NewRequest(JobKind.ExportAndImport);
+        req.Import.InputFile = "old.sql";
+        var job = Build(req);
+
+        Assert.EndsWith("< shop_20261006_1430_ddl.sql", job.Parts[0].Import!.Command);
+        Assert.EndsWith("< shop_20261006_1430_data.sql", job.Parts[1].Import!.Command);
+        Assert.DoesNotContain(job.ImportMessages, m => m.Code == "I11_OTHER_INPUT_FILE");
+    }
 }

@@ -19,7 +19,8 @@ public static class FileNameTemplate
     public const string DefaultDateFormat = "yyyyMMdd";
     public const string DefaultTimeFormat = "HHmm";
 
-    public static string Expand(string template, string db, string host, DateTime now)
+    /// <summary>db 가 null 이면 {db} 토큰은 그대로 둔다.</summary>
+    public static string Expand(string template, string? db, string host, DateTime now)
     {
         return TokenPattern.Replace(template, m =>
         {
@@ -27,7 +28,7 @@ public static class FileNameTemplate
             var fmt = m.Groups["fmt"].Success ? m.Groups["fmt"].Value : null;
             return name switch
             {
-                "db" => SafeName(db),
+                "db" => db is null ? m.Value : SafeName(db),
                 "host" => SafeName(host),
                 "date" => now.ToString(fmt ?? DefaultDateFormat),
                 "time" => now.ToString(fmt ?? DefaultTimeFormat),

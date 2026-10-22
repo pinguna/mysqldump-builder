@@ -369,6 +369,49 @@ public class ImportTests
     }
 
     [Fact]
+    public void Export_Import에서_읽을_파일을_비우면_Export_파일을_읽는다()
+    {
+        var r = Build(NewRequest());
+
+        Assert.EndsWith("shop < shop_20261006_1430.sql", r.Command);
+        Assert.DoesNotContain(r.Messages, m => m.Code == "I11_OTHER_INPUT_FILE");
+    }
+
+    [Fact]
+    public void Export_Import에서_읽을_파일을_적으면_그_파일을_읽고_경고한다()
+    {
+        // 14:30 에 Export 는 됐고 Import 만 실패해, 15:10 에 옵션을 바꿔 다시 만드는 상황.
+        var req = NewRequest();
+        req.Now = new DateTime(2026, 10, 6, 15, 10, 0);
+        req.Import.InputFile = "shop_20261006_1430.sql";
+        var job = new JobBuilder(Schema).Build(req);
+
+        Assert.Contains("> shop_20261006_1510.sql", job.Export!.Command);      // Export 는 지금 시각 파일
+        Assert.EndsWith("shop < shop_20261006_1430.sql", job.Import!.Command); // Import 는 적은 파일
+        Assert.Contains(job.Import.Messages, m => m.Code == "I11_OTHER_INPUT_FILE" && m.Severity == Severity.Warning);
+        Assert.Equal("shop_20261006_1510.sql", JobBuilder.FilePreview(req));   // 파일명 미리보기는 Export 파일 그대로
+
+        // 스크립트도 Import 쪽은 OUT_FILE 대신 적은 경로를 쓴다.
+        var script = new ScriptExporter(Schema).Export(req, ShellKind.Bash).Content;
+        Assert.Contains("shop < shop_20261006_1430.sql", script);
+        Assert.Contains("Import started: shop_20261006_1430.sql -> ", script);
+        Assert.Contains("# Input file: shop_20261006_1430.sql", script);
+        Assert.Contains("--result-file=\"$OutFile\"", new ScriptExporter(Schema).Export(req, ShellKind.PowerShell).Content);
+        Assert.Contains("--execute='source shop_20261006_1430.sql'", new ScriptExporter(Schema).Export(req, ShellKind.PowerShell).Content);
+    }
+
+    [Fact]
+    public void 여러_DB에서_읽을_파일의_db_토큰은_DB마다_바뀐다()
+    {
+        var req = MultiRequest("");
+        req.Import.InputFile = "old/{db}.sql";
+        var job = new JobBuilder(Schema).Build(req);
+
+        Assert.EndsWith("test2 < old/test2.sql", job.Parts[1].Import!.Command);
+        Assert.Equal("{db}_20261006_1430.sql", ImportCommandBuilder.ExportFileName(req, keepDbToken: true));
+    }
+
+    [Fact]
     public void I10_UTF16_파일이면_경고()
     {
         var dir = Path.Combine(Path.GetTempPath(), "MysqlDumpBuilderTests");

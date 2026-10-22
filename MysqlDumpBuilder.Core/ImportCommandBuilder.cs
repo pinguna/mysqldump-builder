@@ -32,8 +32,10 @@ public sealed class ImportCommandBuilder
         if (import.Force)
             messages.Add(RuleMessages.Make("I6_FORCE"));
 
-        // Import 만이면 "읽을 파일" 이 곧 파일이고 .gz 여부도 그 이름으로 정한다. Export 가 있으면 Export 가 만든 파일(템플릿)을 읽는다.
+        // Import 만이면 "읽을 파일" 이 곧 파일이고 .gz 여부도 그 이름으로 정한다. Export 가 있으면 Export 가 만든 파일(템플릿)을 읽되,
+        // 읽을 파일을 따로 적었으면 그 파일을 읽는다.
         var importOnly = req.Job == JobKind.ImportOnly;
+        var otherFile = ReadsOtherFile(req);
         var gzip = UsesGzip(req);
         if (gzip && req.Shell != ShellKind.Bash)
             messages.Add(RuleMessages.Make("V_GZIP_NOT_BASH"));
@@ -46,12 +48,15 @@ public sealed class ImportCommandBuilder
         var fileName = InputFileName(req);
         if (string.IsNullOrWhiteSpace(fileName))
             messages.Add(RuleMessages.Make(importOnly ? "V_IMPORT_NO_FILE" : "V_NO_OUTPUT_FILE"));
-        else if (importOnly && IsUtf16File(fileName))
+        else if ((importOnly || otherFile) && IsUtf16File(fileName))
             messages.Add(RuleMessages.Make("I10_UTF16_FILE"));
+        if (otherFile && !string.IsNullOrWhiteSpace(fileName))
+            messages.Add(RuleMessages.Make("I11_OTHER_INPUT_FILE", null, fileName));
 
         // ---- 토큰 ----
         var groups = new List<CommandLineGroup>();
-        var raw = req.OutputFileShellExpression;   // 스크립트: "$OUT_FILE" 같은 셸 식, 화면: null
+        // 스크립트: "$OUT_FILE" 같은 셸 식, 화면: null. 읽을 파일을 따로 적었으면 스크립트에서도 그 경로를 그대로 쓴다.
+        var raw = otherFile ? null : req.OutputFileShellExpression;
         CommandToken FileToken() => raw is null ? CommandToken.Arg(fileName) : CommandToken.Shell(raw);
 
         // "DB 생성": mysql 을 두 번 띄우지 않고, CREATE DATABASE + USE 문을 파일 앞에 붙여 한 번에 흘려 넣는다.
@@ -178,17 +183,31 @@ public sealed class ImportCommandBuilder
     }
 
     /// <summary>
-    /// mysql 이 읽을 파일. Import 만이면 "읽을 파일"({db} 토큰만 의미 있음), 아니면 Export 가 만드는 파일(템플릿 + .gz).
-    /// 화면과 스크립트 목록이 같은 이름을 보여 주도록 한 곳에서 정한다.
+    /// Export + Import 인데 "읽을 파일" 을 따로 적었는지. 그러면 Export 가 만드는 파일 대신 그 파일을 넣는다.
+    /// (Export 는 성공하고 Import 만 실패해 옵션을 바꿔 다시 넣을 때, 시간이 지나 파일명 템플릿이 다른 이름을 가리키는 문제를 피한다.)
+    /// </summary>
+    public static bool ReadsOtherFile(DumpRequest req)
+        => req.Job == JobKind.ExportAndImport && !string.IsNullOrWhiteSpace(req.Import.InputFile);
+
+    /// <summary>
+    /// mysql 이 읽을 파일. Import 만이거나 Export + Import 에 읽을 파일을 적었으면 "읽을 파일"({db} 토큰만 의미 있음),
+    /// 아니면 Export 가 만드는 파일(템플릿 + .gz). 화면과 스크립트 목록이 같은 이름을 보여 주도록 한 곳에서 정한다.
     /// </summary>
     public static string InputFileName(DumpRequest req)
     {
-        if (req.Job == JobKind.ImportOnly)
+        if (req.Job == JobKind.ImportOnly || ReadsOtherFile(req))
         {
             var db = req.Databases.Select(d => d.Trim()).FirstOrDefault(d => d.Length > 0) ?? "";
             return FileNameTemplate.Expand(req.Import.InputFile?.Trim() ?? "", db, req.Host ?? "", req.Now).Trim();
         }
-        var name = CommandBuilder.ExpandOutputFileName(req);
+        return ExportFileName(req);
+    }
+
+    /// <summary>Export 가 만드는 파일 (템플릿 + .gz). db 를 null 로 주면 {db} 토큰을 그대로 남긴다 (여러 DB 를 한 줄로 보여 줄 때).</summary>
+    public static string ExportFileName(DumpRequest req, bool keepDbToken = false)
+    {
+        var db = keepDbToken ? null : req.Databases.Select(d => d.Trim()).FirstOrDefault(d => d.Length > 0) ?? "";
+        var name = FileNameTemplate.Expand(req.OutputFileTemplate ?? "", db, req.Host ?? "", req.Now).Trim();
         return req.OutputMode == OutputMode.GzipPipe ? CommandBuilder.GzipName(name) : name;
     }
 
@@ -210,7 +229,7 @@ public sealed class ImportCommandBuilder
 
     /// <summary>gunzip 파이프로 넣어야 하는지. Import 만이면 파일 이름이 .gz 로 끝나는지, 아니면 Export 출력 방식이 gzip 인지.</summary>
     public static bool UsesGzip(DumpRequest req)
-        => req.Job == JobKind.ImportOnly
+        => req.Job == JobKind.ImportOnly || ReadsOtherFile(req)
             ? InputFileName(req).EndsWith(".gz", StringComparison.OrdinalIgnoreCase)
             : req.OutputMode == OutputMode.GzipPipe;
 
@@ -374,12 +393,13 @@ public sealed class JobBuilder
     /// <summary>화면 "미리보기" 와 스크립트 목록 파일명 열에 쓸 파일 이름. 파일 분리면 "a_ddl.sql, a_data.sql".</summary>
     public static string FilePreview(DumpRequest req)
     {
-        if (!SplitsContent(req)) return ImportCommandBuilder.InputFileName(req);
+        if (req.Job == JobKind.ImportOnly) return ImportCommandBuilder.InputFileName(req);
+        if (!SplitsContent(req)) return ImportCommandBuilder.ExportFileName(req);
         string Part(string suffix)
         {
             var r = req.Clone();
             r.OutputFileTemplate = WithSuffix(req.OutputFileTemplate, suffix);
-            return ImportCommandBuilder.InputFileName(r);
+            return ImportCommandBuilder.ExportFileName(r);
         }
         return Part("_ddl") + ", " + Part("_data");
     }
@@ -444,6 +464,9 @@ public sealed class JobBuilder
         data.Set("events", false);
         data.Set("skip_triggers", true);
         data.Set("add_drop_database", false);
+        // 파일이 둘로 나뉘므로 "읽을 파일" 하나로 대신할 수 없다. 각 단계는 자기가 만든 파일을 읽는다 (화면도 이때 칸을 잠근다).
+        ddl.Import.InputFile = "";
+        data.Import.InputFile = "";
         if (req.TargetMode == TargetMode.MultipleDatabases) data.Set("no_create_db", true);
 
         return new JobResult { Request = req, Parts = new[] { Build(ddl), Build(data) } };

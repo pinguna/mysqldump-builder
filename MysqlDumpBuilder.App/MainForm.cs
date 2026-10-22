@@ -570,7 +570,7 @@ public sealed class MainForm : Form
         _importCharset.Text = "utf8mb4";
         FieldRow("ImportDatabase", _importDatabase, "ImportCharset", _importCharset);
 
-        // 읽을 파일 (Import 만 할 때): 라벨 + 입력(두 칸) + 찾아보기. 파일명 템플릿은 Export 가 만드는 파일이라 여기서는 쓰지 않는다.
+        // 읽을 파일: 라벨 + 입력(두 칸) + 찾아보기. Import 만이면 꼭 적고, Export + Import 면 비워 두면 Export 파일을 읽는다 (ApplyDependencyUi).
         _importInputFile = Field("ImportInputFileHint");
         _importBrowse = Localized(new Button { AutoSize = true, Margin = new Padding(0, 2, 6, 2) }, "Browse");
         _importBrowse.Click += (_, _) => BrowseInputFile();
@@ -982,6 +982,7 @@ public sealed class MainForm : Form
             _importDatabase.Text = import.Database;
             _lastMirroredDbText = string.Join(", ", ImportCommandBuilder.SplitNames(_databases.Text));   // 불러온 값은 덮어쓰지 않는다
             _importInputFile.Text = import.InputFile;
+            _lastJob = req.Job;   // 불러온 작업 종류에서는 읽을 파일을 자동으로 채우지 않는다
             _importBinaryPath.Text = import.BinaryPath;
             _importCharset.Text = import.Charset;
             _importCreateDb.Checked = import.CreateDatabase;
@@ -1220,15 +1221,27 @@ public sealed class MainForm : Form
                 _importPwShown = null;   // 섹션을 통째로 켜고 끈 뒤에는 패스워드 값 칸과 읽을 파일 행 표시를 다시 계산한다
                 _importInputShown = null;
             }
-            // 읽을 파일 행은 Import 만 할 때만. Export 가 있으면 파일명 템플릿이 파일을 정하므로 템플릿 칸은 그 반대로 잠근다.
+            // 읽을 파일 행은 Import 가 있으면 늘 보인다. Import 만이면 파일명 템플릿 칸을 잠근다 (Export 가 없으니 쓰지 않는다).
+            // Export + Import 에서는 비워 두면 Export 가 만드는 파일을 읽고, 그 이름을 흐린 글씨로 보여 준다.
+            // 따로 적으면 그 파일을 읽는다 (Export 는 됐고 Import 만 다시 할 때, 시간이 지나 템플릿 이름이 바뀌는 문제를 피하려고).
             var importOnly = req.Job == JobKind.ImportOnly;
-            var showInput = showImport && importOnly;
+            var showInput = showImport;
             if (_importInputShown != showInput)
             {
                 WithLayoutSuspended(() => { foreach (var c in _importInputRow) c.Visible = showInput; });
                 _importInputShown = showInput;
             }
             _fileTemplate.Enabled = !importOnly;
+            var exportFile = ExportFileText(req);
+            // DDL + DML 파일 분리는 파일이 둘이라 읽을 파일 하나로 대신할 수 없다.
+            var inputEditable = importOnly || !JobBuilder.SplitsContent(req);
+            _importInputFile.Enabled = inputEditable;
+            _importBrowse.Enabled = inputEditable;
+            _importInputFile.PlaceholderText = importOnly ? "" : string.Format(UiStrings.Get("ImportInputFollowsExport"), exportFile);
+            // Export + Import → Import 로 바꿀 때 칸이 비어 있으면 Export 파일 이름을 넣어 둔다 (시각만 고쳐 쓰면 되게).
+            if (importOnly && _lastJob == JobKind.ExportAndImport && _importInputFile.Text.Trim().Length == 0)
+                _importInputFile.Text = exportFile;
+            _lastJob = req.Job;
             var ownConnection = !_importSame.Checked;
             foreach (var c in new Control[] { _importHost, _importPort, _importUser, _importPasswordMode, _importPasswordValue })
                 c.Enabled = ownConnection;
@@ -1400,6 +1413,13 @@ public sealed class MainForm : Form
         var tables = string.Join(",", r.Tables);
         return r.TargetMode == TargetMode.Tables && tables.Length > 0 ? dbs + "[" + tables + "]" : dbs;
     }
+
+    /// <summary>마지막으로 화면에 적용한 작업 종류 (Export + Import → Import 전환을 알아채려고).</summary>
+    private JobKind? _lastJob;
+
+    /// <summary>Export 가 만드는 파일 이름. 여러 DB 면 {db} 를 남겨 한 줄로 (읽을 파일 칸에 그대로 쓸 수 있는 모양).</summary>
+    private static string ExportFileText(DumpRequest req)
+        => ImportCommandBuilder.ExportFileName(req, keepDbToken: req.TargetMode == TargetMode.MultipleDatabases);
 
     // 대상 DB 자동 채움: 마지막으로 채워 넣은 원본 DB 문구. 입력란이 이 값(또는 빈 값)이면 원본을 따라가고, 다르면 사용자가 고친 것이다.
     private string _lastMirroredDbText = "";
