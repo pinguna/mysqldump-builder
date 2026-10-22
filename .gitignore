@@ -2,8 +2,6 @@ bin/
 obj/
 publish/
 *.user
-.vs/
-settings.json
 presets.json
 release/
 batch.json
