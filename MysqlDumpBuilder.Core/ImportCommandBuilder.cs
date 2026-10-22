@@ -5,7 +5,7 @@ namespace MysqlDumpBuilder.Core;
 /// <summary>
 /// Import 단계: Export 파일을 대상 DB 에 넣는 mysql 명령어 + 경고.
 ///   bash/cmd  : mysql [접속] [옵션] db &lt; "파일"      (gzip 파일은 gunzip -c "파일" | mysql ...)
-///   PowerShell: mysql [접속] [옵션] db --execute="source 파일"   (PowerShell 은 &lt; 리다이렉션이 없다)
+///   PowerShell: mysql [접속] [옵션] db --execute="source 파일"   (PowerShell 은 &lt; 리다이렉션이 없다. 경로의 \ 는 / 로)
 /// "없으면 DB 생성"이 켜져 있으면 CREATE DATABASE IF NOT EXISTS 를 먼저 실행하는 줄이 하나 더 붙는다.
 /// 규칙 코드는 I1~ 이다.
 /// </summary>
@@ -46,6 +46,8 @@ public sealed class ImportCommandBuilder
         var fileName = InputFileName(req);
         if (string.IsNullOrWhiteSpace(fileName))
             messages.Add(RuleMessages.Make(importOnly ? "V_IMPORT_NO_FILE" : "V_NO_OUTPUT_FILE"));
+        else if (importOnly && IsUtf16File(fileName))
+            messages.Add(RuleMessages.Make("I10_UTF16_FILE"));
 
         // ---- 토큰 ----
         var groups = new List<CommandLineGroup>();
@@ -95,7 +97,9 @@ public sealed class ImportCommandBuilder
         if (req.Shell == ShellKind.PowerShell)
         {
             if (dbArgNeeded && targetDb.Length > 0 && !createDb) input.Tokens.Add(CommandToken.Arg(targetDb));
-            var file = raw is null ? fileName : raw.Trim('"');
+            // mysql 은 source 경로의 \ 를 명령으로 읽는다 (C:\temp\x.sql 의 \t 는 notee). 슬래시는 Windows 에서도 통하므로 바꿔 쓴다.
+            // 스크립트는 경로가 실행 때 정해지므로 PowerShell 식으로 바꾼다: $OutFile → $($OutFile.Replace('\','/'))
+            var file = raw is null ? fileName.Replace('\\', '/') : "$(" + raw.Trim('"') + ".Replace('\\','/'))";
             if (createDb)
             {
                 // PowerShell 큰따옴표 안에서 백틱은 이스케이프 문자라 두 번 쓴다. `n 은 줄바꿈.
@@ -105,7 +109,7 @@ public sealed class ImportCommandBuilder
             else
             {
                 input.Tokens.Add(raw is null
-                    ? CommandToken.FlagWithValue("--execute", "source " + fileName)
+                    ? CommandToken.FlagWithValue("--execute", "source " + file)
                     : CommandToken.FlagWithRawValue("--execute", "\"source " + file + "\""));
             }
         }
@@ -186,6 +190,22 @@ public sealed class ImportCommandBuilder
         }
         var name = CommandBuilder.ExpandOutputFileName(req);
         return req.OutputMode == OutputMode.GzipPipe ? CommandBuilder.GzipName(name) : name;
+    }
+
+    /// <summary>
+    /// 이 PC 에서 열 수 있는 절대 경로이고 UTF-16 BOM(FF FE / FE FF)으로 시작하는지. PowerShell 5.1 의 > 로 만든 덤프를 미리 알려 주려는 것.
+    /// 서버 경로나 상대 경로는 확인할 수 없으니 그냥 넘어간다.
+    /// </summary>
+    public static bool IsUtf16File(string path)
+    {
+        try
+        {
+            if (!Path.IsPathFullyQualified(path) || !File.Exists(path)) return false;
+            using var fs = File.OpenRead(path);
+            int a = fs.ReadByte(), b = fs.ReadByte();
+            return (a == 0xFF && b == 0xFE) || (a == 0xFE && b == 0xFF);
+        }
+        catch (Exception) { return false; }
     }
 
     /// <summary>gunzip 파이프로 넣어야 하는지. Import 만이면 파일 이름이 .gz 로 끝나는지, 아니면 Export 출력 방식이 gzip 인지.</summary>

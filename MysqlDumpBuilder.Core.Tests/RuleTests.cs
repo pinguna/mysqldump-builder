@@ -227,7 +227,7 @@ public class RuleTests
     }
 
     [Fact]
-    public void R17_PowerShell_리다이렉션은_경고()
+    public void R17_PowerShell_리다이렉션은_result_file로_바꾼다()
     {
         var req = NewRequest();
         req.Shell = ShellKind.PowerShell;
@@ -235,7 +235,12 @@ public class RuleTests
 
         var result = Build(req);
 
-        Assert.Contains(result.Messages, m => m.Code == "R17_PS_REDIRECT_UTF16");
+        Assert.Contains(result.Messages, m => m.Code == "R17_PS_REDIRECT_UTF16" && m.Severity == Severity.Info);
+        Assert.Contains("--result-file=", result.Command);
+        Assert.DoesNotContain(">", result.Command);
+
+        req.Shell = ShellKind.Cmd;
+        Assert.Contains(" > ", Build(req).Command);   // cmd 의 > 는 바이트 그대로라 그대로 둔다
     }
 
     [Fact]

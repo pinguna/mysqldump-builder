@@ -141,8 +141,8 @@ INSERT / INSERT IGNORE(중복 키 건너뜀) / REPLACE(중복 키 덮어씀). �
 
 | 방식 | 비고 |
 | --- | --- |
-| `> 파일` (리다이렉션) | 기본 |
-| `--result-file=파일` | Windows 권장 (PowerShell 리다이렉션의 인코딩 문제 없음) |
+| `> 파일` (리다이렉션) | 기본. 대상 OS 가 PowerShell 이면 자동으로 `--result-file` 로 바꿉니다 (PowerShell 의 `>` 는 파일을 UTF-16 으로 다시 써서 Import 가 안 됨) |
+| `--result-file=파일` | Windows 권장 (mysqldump 가 파일을 직접 써서 인코딩 문제 없음) |
 | `\| gzip > 파일.gz` | Linux(bash) 전용 |
 
 - **파일명 템플릿** 토큰: `{db}` `{host}` `{date:yyyyMMdd}` `{time:HHmm}`. 아래 "미리보기" 에 실제 이름이 보입니다.
@@ -182,7 +182,7 @@ Export 가 아닌 작업을 고르면 **Import 대상** 섹션이 나타납니�
 - **DB 생성**: `CREATE DATABASE IF NOT EXISTS` 와 `USE` 를 파일 앞에 붙여 넣습니다. 프로그램을 다시 열면 항상 꺼져 있습니다(실수 방지).
 - **오류 무시 (--force)**: SQL 오류가 나도 계속 진행합니다. 일부 테이블이 빠질 수 있어 경고합니다.
 - **FK 검사 끄기**: `--init-command="SET FOREIGN_KEY_CHECKS=0"`. 세션 설정이라 mysql 이 끝나면 사라지므로 되돌리는 명령은 필요 없습니다.
-- 넣는 방법은 OS 마다 다릅니다: bash/cmd 는 `mysql … db < 파일`, PowerShell 은 `<` 가 없어 `mysql … --execute="source 파일"`.
+- 넣는 방법은 OS 마다 다릅니다: bash/cmd 는 `mysql … db < 파일`, PowerShell 은 `<` 가 없어 `mysql … --execute="source 파일"`. 이때 경로의 `\` 는 `/` 로 바꿔 넣습니다 (mysql 이 `\t` 같은 것을 명령으로 읽기 때문).
 - **여러 DB + Import** 는 DB 마다 mysqldump 와 mysql 을 따로 만듭니다 (`--databases` 파일에는 `USE db;` 가 들어 있어 대상 이름을 바꿀 수 없기 때문). 대상 DB 는 쉼표로 원본과 같은 순서로 적습니다 (예: 원본 `a, b, c` → 대상 `a_dev, b, c`). 개수가 다르면 오류입니다.
 
 ## 9. 스크립트 목록 (여러 작업을 한 스크립트로)
@@ -241,3 +241,8 @@ Windows PowerShell 5.1 은 큰따옴표를 외부 프로그램에 제대로 넘�
 
 **Q. 필요한 옵션이 화면에 없습니다.**
 `options.schema.json` 에 항목을 추가하면 체크박스가 생깁니다. 형식은 저장소 README 의 "옵션을 추가하려면" 을 참고하세요.
+
+**Q. PowerShell 에서 Import 하니 `ASCII '\0' appeared in the statement` 오류가 납니다.**
+그 파일은 PowerShell 의 `>` 로 만든 UTF-16 파일입니다 (Windows PowerShell 5.1 은 `>` 로 받은 출력을 UTF-16 으로 다시 쓰고, 한글은 이때 이미 깨집니다). `--result-file` 로 다시 Export 하세요. 이 프로그램은 대상 OS 가 PowerShell 이면 자동으로 `--result-file` 을 씁니다. 다음 우회는 쓰지 마세요.
+- `--binary-mode` 추가: `source` 가 클라이언트 명령이 아니라 SQL 로 서버에 보내져 `ERROR 1064 … near 'source …'` 가 납니다.
+- `Get-Content 파일 | mysql …`: PowerShell 이 다시 인코딩해 넘기므로 한글이 `?` 로 바뀌고, 큰 파일은 메모리를 다 씁니다.

@@ -81,13 +81,17 @@ public sealed class Preset
         if (Shell is not null) req.Shell = Shell.Value;
     }
 
-    /// <summary>이름을 뺀 설정 내용만의 키. 두 프리셋(목록 항목)이 같은 설정인지 비교할 때 쓴다.</summary>
+    /// <summary>
+    /// 이름과 대상 OS 를 뺀 설정 내용만의 키. 두 프리셋(목록 항목)이 같은 설정인지 비교할 때 쓴다.
+    /// 대상 OS 는 스크립트 목록 공통(현재 화면 값)이라, OS 만 바꿨다고 "목록에 없는 새 설정" 이 되면 안 된다.
+    /// </summary>
     public string SettingsKey()
     {
-        var name = Name;
+        var (name, shell) = (Name, Shell);
         Name = "";
+        Shell = null;
         try { return JsonSerializer.Serialize(this, PresetStore.JsonOptions); }
-        finally { Name = name; }
+        finally { (Name, Shell) = (name, shell); }
     }
 
     /// <summary>현재 요청 전체를 프리셋으로 스냅샷한다 (비밀번호 제외).</summary>

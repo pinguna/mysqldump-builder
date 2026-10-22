@@ -146,13 +146,30 @@ public sealed class ScriptExporter
         return what + "@" + (string.IsNullOrWhiteSpace(req.Host) ? "localhost" : req.Host.Trim()) + (req.Port is int p ? ":" + p : "");
     }
 
-    /// <summary>항목 한 줄 요약: "shop@src -> shop@dst" 처럼.</summary>
-    private static string Describe(Item item)
+    private static string Describe(Item item) => DescribeStep(item.Request);
+
+    /// <summary>단계 한 줄 요약: "shop@src -> shop@dst" 처럼. DDL + DML 파일 분리의 하위 단계면 뒤에 [DDL] / [DML].</summary>
+    public static string DescribeStep(DumpRequest req)
     {
         var parts = new List<string>();
-        if (item.HasExport) parts.Add(Source(item.Request));
-        if (item.HasImport) parts.Add(ImportCommandBuilder.Describe(item.Request));
-        return string.Join(" -> ", parts);
+        if (req.Job != JobKind.ImportOnly) parts.Add(Source(req));
+        if (req.Job != JobKind.ExportOnly) parts.Add(ImportCommandBuilder.Describe(req));
+        var text = string.Join(" -> ", parts);
+        if (req.IsContentSplitPart) text += req.ContentMode == ContentMode.StructureOnly ? " [DDL]" : " [DML]";
+        return text;
+    }
+
+    /// <summary>
+    /// 화면 미리보기·클립보드용 명령어: 단계(Export + Import 한 세트)가 둘 이상이면 세트마다 스크립트와 같은 머리줄 주석을 달고
+    /// 세트 사이를 빈 줄 두 개로 띄운다. 주석이라 그대로 붙여 넣어도 실행된다 (cmd 는 REM).
+    /// </summary>
+    public static string CommandPreview(IEnumerable<JobResult> jobs, ShellKind shell)
+    {
+        var steps = jobs.SelectMany(j => j.Steps).ToList();
+        if (steps.Count <= 1) return string.Join("\n\n", steps.Select(s => s.CommandText));
+        var comment = shell == ShellKind.Cmd ? "REM" : "#";
+        return string.Join("\n\n\n", steps.Select((s, i) =>
+            comment + " ---- " + (i + 1) + "/" + steps.Count + ": " + DescribeStep(s.Request) + " ----\n" + s.CommandText));
     }
 
     /// <summary>머리말 주석 줄들 (주석 기호 없이, 요청 단위). 세 셸이 같은 문구를 쓴다. 셸별 추가 줄은 각 빌더가 붙인다.</summary>

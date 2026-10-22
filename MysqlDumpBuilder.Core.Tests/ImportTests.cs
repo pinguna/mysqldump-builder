@@ -211,6 +211,21 @@ public class ImportTests
     }
 
     [Fact]
+    public void 미리보기는_세트가_여럿이면_세트마다_머리줄을_단다()
+    {
+        var job = new JobBuilder(Schema).Build(MultiRequest("test123,test2,test3"));
+
+        var text = ScriptExporter.CommandPreview(new[] { job }, ShellKind.Bash);
+        Assert.StartsWith("# ---- 1/3: test@10.0.1.20:3306 -> test123@10.0.2.5 ----\nmysqldump", text);
+        Assert.Contains(".sql\n\n\n# ---- 2/3: test2@10.0.1.20:3306 -> test2@10.0.2.5 ----\nmysqldump", text);
+        Assert.Contains("REM ---- 3/3: ", ScriptExporter.CommandPreview(new[] { job }, ShellKind.Cmd));
+
+        // 세트가 하나면 머리줄 없이 명령어만.
+        var single = new JobBuilder(Schema).Build(NewRequest());
+        Assert.Equal(single.CommandText, ScriptExporter.CommandPreview(new[] { single }, ShellKind.Bash));
+    }
+
+    [Fact]
     public void 여러_DB_스크립트는_DB마다_단계가_있고_머리말은_목록으로_적는다()
     {
         var r = new ScriptExporter(Schema).Export(MultiRequest("test123,test2,test3"), ShellKind.Bash);
@@ -341,6 +356,34 @@ public class ImportTests
     }
 
     [Fact]
+    public void powershell_source_경로의_역슬래시는_슬래시로_바꾼다()
+    {
+        // mysql 은 source 인자의 \t, \n 등을 클라이언트 명령으로 읽는다.
+        var req = ImportOnlyRequest(@"C:\temp\new\shop.sql");
+        req.Shell = ShellKind.PowerShell;
+
+        Assert.Contains("--execute='source C:/temp/new/shop.sql'", Build(req).Command);
+
+        var script = new ScriptExporter(Schema).Export(req, ShellKind.PowerShell).Content;
+        Assert.Contains("--execute=\"source $($OutFile.Replace('\\','/'))\"", script);
+    }
+
+    [Fact]
+    public void I10_UTF16_파일이면_경고()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "MysqlDumpBuilderTests");
+        Directory.CreateDirectory(dir);
+        var utf16 = Path.Combine(dir, "utf16.sql");
+        var utf8 = Path.Combine(dir, "utf8.sql");
+        File.WriteAllText(utf16, "-- dump\r\n", new System.Text.UnicodeEncoding(false, true));   // PowerShell 5.1 의 > 와 같은 FF FE
+        File.WriteAllText(utf8, "-- dump\n", new System.Text.UTF8Encoding(false));
+
+        Assert.Contains(Build(ImportOnlyRequest(utf16)).Messages, m => m.Code == "I10_UTF16_FILE");
+        Assert.DoesNotContain(Build(ImportOnlyRequest(utf8)).Messages, m => m.Code == "I10_UTF16_FILE");
+        Assert.DoesNotContain(Build(ImportOnlyRequest("backup/shop.sql")).Messages, m => m.Code == "I10_UTF16_FILE");
+    }
+
+    [Fact]
     public void 프리셋은_작업_종류와_Import_대상을_저장하되_평문_패스워드는_버린다()
     {
         var req = NewRequest();
@@ -384,5 +427,19 @@ public class ImportTests
         Assert.Equal(a.SettingsKey(), b.SettingsKey());
         Assert.NotEqual(a.SettingsKey(), c.SettingsKey());
         Assert.Equal("a", a.Name);
+    }
+
+    [Fact]
+    public void 설정_키는_대상_OS를_빼고_비교한다()
+    {
+        // 대상 OS 는 스크립트 목록 공통이라 OS 만 바꿔도 목록의 같은 항목으로 본다 (스크립트 미리보기가 유지되게).
+        var bash = NewRequest();
+        var ps = NewRequest();
+        ps.Shell = ShellKind.PowerShell;
+        var a = Preset.FromRequest("", bash);
+        var b = Preset.FromRequest("", ps);
+
+        Assert.Equal(a.SettingsKey(), b.SettingsKey());
+        Assert.Equal(ShellKind.PowerShell, b.Shell);   // 키만 빼고 값은 그대로
     }
 }

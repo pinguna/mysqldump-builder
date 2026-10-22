@@ -1095,7 +1095,7 @@ public sealed class MainForm : Form
         var head = "#" + (i + 1) + "  " + row.SubItems[1].Text + "  ·  " + row.SubItems[2].Text + "  ·  " + row.SubItems[3].Text;
         var body = job.HasErrors
             ? string.Join(Environment.NewLine, job.ExportMessages.Concat(job.ImportMessages).Where(m => m.Severity == Severity.Error).Select(m => m.Text.Get(UiStrings.Current)))
-            : job.CommandText.Replace("\n", Environment.NewLine);
+            : ScriptExporter.CommandPreview(new[] { job }, req.Shell).Replace("\n", Environment.NewLine);
         using var dialog = new MessageDialog(Font, UiStrings.Get("BatchDetailTitle"), head, job.HasErrors ? AppTheme.Current.Error : AppTheme.Current.Header, body, UiStrings.Get("BatchLoad"), monospace: true);
         dialog.ShowDialog(this);
         if (dialog.ActionRequested) LoadBatchItem();
@@ -1285,7 +1285,7 @@ public sealed class MainForm : Form
         }
     }
 
-    /// <summary>결과 창에 보여 줄 텍스트: 보통은 명령어(여러 건이면 빈 줄로 구분), "스크립트 미리보기"가 켜져 있으면 내보낼 스크립트 전체.</summary>
+    /// <summary>결과 창에 보여 줄 텍스트: 보통은 명령어(세트가 여럿이면 "# ---- 1/N: 원본 -> 대상 ----" 머리줄로 구분), "스크립트 미리보기"가 켜져 있으면 내보낼 스크립트 전체.</summary>
     private string CurrentOutputText(DumpRequest current, IReadOnlyList<DumpRequest> reqs, IReadOnlyList<JobResult> results)
     {
         if (_scriptPreview.Checked)
@@ -1293,7 +1293,7 @@ public sealed class MainForm : Form
             var script = new ScriptExporter(_schema).ExportMany(reqs, current.Shell);
             if (!script.HasErrors) return script.Content.Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
         }
-        return string.Join(Environment.NewLine + Environment.NewLine, results.Select(r => r.CommandText.Replace("\n", Environment.NewLine)));
+        return ScriptExporter.CommandPreview(results, current.Shell).Replace("\n", Environment.NewLine);
     }
 
     /// <summary>결과 창 제목: "옵션 미리보기" / "덤프 목록 미리보기 (N건)" / 스크립트 미리보기가 켜져 있으면 "스크립트 미리보기: 저장될 스크립트 파일명".</summary>

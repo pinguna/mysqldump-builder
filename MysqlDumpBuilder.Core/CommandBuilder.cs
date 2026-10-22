@@ -466,8 +466,16 @@ public sealed class CommandBuilder
                 break;
 
             case OutputMode.StdoutRedirect:
+                // PowerShell 의 > 는 mysqldump 출력을 문자열로 받아 다시 쓴다 (5.1 은 UTF-16, 한글은 콘솔 코드페이지로 깨짐).
+                // 그 파일은 mysql 이 읽지 못하므로('\0' 오류) PowerShell 에서는 바이트 그대로 쓰는 --result-file 로 바꾼다.
                 if (req.Shell == ShellKind.PowerShell)
+                {
                     messages.Add(RuleMessages.Make("R17_PS_REDIRECT_UTF16"));
+                    g.Tokens.Add(raw is null
+                        ? CommandToken.FlagWithValue("--result-file", fileName)
+                        : CommandToken.FlagWithRawValue("--result-file", raw));
+                    break;
+                }
                 g.Tokens.Add(CommandToken.Shell(">"));
                 g.Tokens.Add(FileToken(fileName));
                 break;
