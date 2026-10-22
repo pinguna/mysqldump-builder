@@ -1,6 +1,6 @@
 # mysqldump 명령어 생성기 — 사용 설명서
 
-> 버전 0.1.0 기준. 화면에서 조건을 고르면 서버에서 그대로 실행할 수 있는 `mysqldump` / `mysql` 명령어와 실행 스크립트를 만들어 주는 Windows 도구입니다.
+> 버전 0.1.1 기준. 화면에서 조건을 고르면 서버에서 그대로 실행할 수 있는 `mysqldump` / `mysql` 명령어와 실행 스크립트를 만들어 주는 Windows 도구입니다.
 > 프로그램은 **DB 에 접속하지 않습니다.** 명령어 문자열만 만들고, 실행은 사용자가 서버에서 합니다.
 
 ![메인 화면](images/main.png)
@@ -24,7 +24,7 @@
 
 ## 1. 설치와 실행
 
-- 배포 zip(`MysqlDumpBuilder-v0.1.0-win-x64.zip`)을 아무 폴더에나 풀고 `MysqlDumpBuilder.exe` 를 실행합니다.
+- 배포 zip(`MysqlDumpBuilder-v0.1.1-win-x64.zip`)을 아무 폴더에나 풀고 `MysqlDumpBuilder.exe` 를 실행합니다.
 - 요구 사항: Windows 10 이상. .NET 설치는 필요 없습니다 (exe 에 포함).
 - 처음 실행할 때 Windows SmartScreen 경고가 뜨면 **추가 정보 → 실행** 을 누릅니다. 코드 서명을 하지 않은 프로그램이라 뜨는 경고입니다.
 - 설정·프리셋·목록은 모두 exe 와 같은 폴더에 저장됩니다(포터블). 폴더를 통째로 복사하면 다른 PC 에서도 그대로 씁니다.
