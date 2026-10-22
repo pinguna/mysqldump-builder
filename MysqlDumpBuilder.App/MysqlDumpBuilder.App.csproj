@@ -10,7 +10,7 @@
     <RootNamespace>MysqlDumpBuilder.App</RootNamespace>
     <AssemblyName>MysqlDumpBuilder</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Product>mysqldump Command Builder</Product>
     <!-- 포터블 단일 exe 배포 (publish.cmd 참고). 압축을 켜면 크기가 절반으로 줄고 시작이 약간 느려진다. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
